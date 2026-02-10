@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HDFC Mutual Fund Fact-Assistant | Groww Style</title>
+    <link rel="stylesheet" href="style.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <!-- Sticky Header -->
+    <header class="main-header">
+        <div class="header-container">
+            <div class="logo">
+                <img src="https://groww.in/groww-logo-270.png" alt="Groww Logo" class="groww-logo">
+                <span>Mutual Funds</span>
+            </div>
+            <div class="search-bar">
+                <span class="search-icon">🔍</span>
+                <input type="text" placeholder="Search mutual funds" disabled>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-content">
+        <div class="chat-container">
+            <div class="chat-header">
+                <h1>HDFC Mutual Fund Assistant</h1>
+                <p class="subtitle">Facts-only. No investment advice.</p>
+                <div class="compliance-tag">
+                    Official Source Verified
+                </div>
+            </div>
+
+            <div id="chat-box" class="chat-box">
+                <!-- Welcome Screen -->
+                <div id="welcome-screen" class="welcome-screen">
+                    <p class="welcome-line">Welcome! How can I help you with HDFC Mutual Fund facts today?</p>
+                    <div class="welcome-examples">
+                        <button class="example-btn"
+                            data-query="What is the expense ratio of HDFC Flexi Cap Fund?">Expense Ratio</button>
+                        <button class="example-btn" data-query="How to download capital-gains statement?">Tax
+                            Statement</button>
+                        <button class="example-btn" data-query="What is the exit load for HDFC Large Cap?">Exit
+                            Load</button>
+                    </div>
+                    <p class="disclaimer-note">Facts-only. No investment advice.</p>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <input type="text" id="user-input" placeholder="Type your factual query..." autocomplete="off">
+                    <button id="send-btn">Send</button>
+                </div>
+            </div>
+
+            <footer class="chat-footer">
+                <p>Derived from HDFC Mutual Fund Scheme Information Documents (SID).</p>
+            </footer>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

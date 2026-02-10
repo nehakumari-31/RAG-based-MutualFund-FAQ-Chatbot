@@ -1,0 +1,342 @@
+:root {
+    --groww-green: #00D09C;
+    --groww-green-dark: #00b085;
+    --text-main: #222222;
+    --text-secondary: #7C7E8C;
+    --bg-light: #FFFFFF;
+    --bg-shade: #F6F6F7;
+    --border-color: #E5E7EB;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', 'Roboto', sans-serif;
+}
+
+body {
+    background-color: var(--bg-shade);
+    color: var(--text-main);
+    min-height: 100vh;
+}
+
+/* Header Styles */
+.main-header {
+    background: var(--bg-light);
+    height: 70px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 600;
+    font-size: 18px;
+    color: var(--text-main);
+}
+
+.groww-logo {
+    height: 32px;
+}
+
+.search-bar {
+    background: var(--bg-shade);
+    border-radius: 8px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 400px;
+}
+
+.search-bar input {
+    background: none;
+    border: none;
+    outline: none;
+    width: 100%;
+    font-size: 14px;
+}
+
+/* Chat Layout */
+.main-content {
+    display: flex;
+    justify-content: center;
+    padding: 40px 24px;
+}
+
+.chat-container {
+    width: 100%;
+    max-width: 650px;
+    background: var(--bg-light);
+    border-radius: 12px;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    flex-direction: column;
+    min-height: 80vh;
+    padding: 32px;
+}
+
+.chat-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.chat-header h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    display: none;
+    /* Hidden in favor of tiny welcome UI */
+}
+
+.compliance-tag {
+    display: inline-block;
+    margin-top: 12px;
+    background: rgba(0, 208, 156, 0.1);
+    color: var(--groww-green-dark);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 20px;
+}
+
+/* Chat Box */
+.chat-box {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-right: 10px;
+}
+
+.chat-box::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-box::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+.message {
+    max-width: 85%;
+    padding: 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.assistant-message {
+    background: var(--bg-shade);
+    color: var(--text-main);
+    align-self: flex-start;
+    border-bottom-left-radius: 2px;
+}
+
+.user-message {
+    background: var(--groww-green);
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 2px;
+    font-weight: 500;
+}
+
+/* Welcome Screen */
+.welcome-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    gap: 24px;
+    padding: 20px;
+    color: var(--text-secondary);
+}
+
+.welcome-line {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-main);
+}
+
+.welcome-examples {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.disclaimer-note {
+    font-size: 14px;
+    font-weight: 600;
+    background: #EEF2FF;
+    color: #4F46E5;
+    padding: 8px 20px;
+    border-radius: 100px;
+    border: 1px solid #E0E7FF;
+}
+
+/* Hide welcome screen when chat starts */
+.chat-container.active .welcome-screen {
+    display: none;
+}
+
+.chat-container.active .chat-box {
+    justify-content: flex-start;
+}
+
+/* Chat Layout */
+.quick-actions {
+    margin-bottom: 24px;
+}
+
+.section-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
+.examples {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.example-btn {
+    background: white;
+    border: 1px solid var(--border-color);
+    padding: 8px 16px;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.example-btn:hover {
+    border-color: var(--groww-green);
+    color: var(--groww-green);
+    background: rgba(0, 208, 156, 0.05);
+}
+
+/* Input Area */
+.input-area {
+    margin-top: auto;
+}
+
+.input-wrapper {
+    display: flex;
+    gap: 12px;
+    background: var(--bg-shade);
+    padding: 8px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    transition: border-color 0.2s;
+}
+
+.input-wrapper:focus-within {
+    border-color: var(--groww-green);
+    background: white;
+}
+
+input[type="text"] {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    font-size: 15px;
+    outline: none;
+}
+
+#send-btn {
+    background: var(--groww-green);
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#send-btn:hover {
+    background: var(--groww-green-dark);
+}
+
+.chat-footer {
+    margin-top: 16px;
+    text-align: center;
+}
+
+.chat-footer p {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* Source Link Container */
+.link-container {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.source-link {
+    display: inline-block;
+    color: var(--groww-green-dark);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+    border: 1px solid var(--groww-green);
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.source-link:hover {
+    background: var(--groww-green);
+    color: white;
+}

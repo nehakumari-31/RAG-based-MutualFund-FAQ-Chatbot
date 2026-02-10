@@ -1,0 +1,12 @@
+langchain
+langchain-core
+langchain-openai
+langchain-chroma
+langchain-groq
+pypdf
+python-dotenv
+fastapi
+uvicorn
+openai
+tiktoken
+streamlit>=1.28.0

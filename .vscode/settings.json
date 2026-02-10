@@ -1,0 +1,9 @@
+{
+    "python.defaultInterpreterPath": "/usr/bin/python3",
+    "python.analysis.extraPaths": [
+        "/Users/neha/Library/Python/3.9/lib/python/site-packages",
+        "./phase1/src"
+    ],
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "basic"
+}
