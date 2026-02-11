@@ -1,6 +1,5 @@
 langchain>=1,<2
 langchain-core>=1,<2
-langchain-classic>=1,<2
 langchain-openai
 langchain-chroma
 langchain-groq

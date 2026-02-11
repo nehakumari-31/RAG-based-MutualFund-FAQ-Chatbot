@@ -1,11 +1,12 @@
 import os
 import sys
 import threading
+import time
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
-from langchain_classic.chains import ConversationalRetrievalChain
-from langchain_classic.prompts import PromptTemplate
+from langchain.chains import ConversationalRetrievalChain
+from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 
 # Add current dir to path for local imports
@@ -18,10 +19,30 @@ load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"
 # Configuration
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../vector_db"))
 
-from langchain_classic.memory import ConversationBufferMemory
+from langchain.memory import ConversationBufferMemory
 
 _VECTOR_DB_LOCK = threading.Lock()
 _VECTOR_DB_READY = False
+
+# Embeddings cache for performance optimization
+_EMBEDDINGS_CACHE = None
+_EMBEDDINGS_LOCK = threading.Lock()
+
+def get_embeddings():
+    """Get cached embeddings instance to avoid reloading the model on every query."""
+    global _EMBEDDINGS_CACHE
+    
+    if _EMBEDDINGS_CACHE is not None:
+        return _EMBEDDINGS_CACHE
+    
+    with _EMBEDDINGS_LOCK:
+        if _EMBEDDINGS_CACHE is None:
+            print("🔄 Loading embeddings model (one-time initialization)...")
+            start = time.time()
+            _EMBEDDINGS_CACHE = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            elapsed = time.time() - start
+            print(f"✓ Embeddings model loaded in {elapsed:.2f}s")
+        return _EMBEDDINGS_CACHE
 
 
 def _is_vector_db_ready() -> bool:
@@ -98,7 +119,7 @@ Answer:"""
 
 def get_rag_chain(scheme_filter=None, memory=None):
     ensure_vector_db()
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    embeddings = get_embeddings()  # Use cached embeddings
     vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
     llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
     
@@ -124,6 +145,34 @@ class Phase4RAG:
     def __init__(self):
         self.router = get_router()
         self.sessions = {} # session_id -> {memory, last_scheme}
+    
+    def warmup(self):
+        """Pre-load all expensive components to optimize first query performance."""
+        print("\n🚀 Warming up chatbot components...")
+        start_total = time.time()
+        
+        # 1. Pre-load embeddings model
+        get_embeddings()
+        
+        # 2. Ensure vector database is ready
+        print("🔄 Checking vector database...")
+        start_db = time.time()
+        ensure_vector_db()
+        elapsed_db = time.time() - start_db
+        print(f"✓ Vector database ready in {elapsed_db:.2f}s")
+        
+        # 3. Pre-warm router with a test query
+        print("🔄 Initializing query router...")
+        start_router = time.time()
+        try:
+            self.router.invoke({"query": "What is the expense ratio?"})
+        except Exception:
+            pass  # Ignore errors, just warming up the LLM
+        elapsed_router = time.time() - start_router
+        print(f"✓ Router initialized in {elapsed_router:.2f}s")
+        
+        elapsed_total = time.time() - start_total
+        print(f"✅ Warmup complete in {elapsed_total:.2f}s - Ready for queries!\n")
 
     def get_session_state(self, session_id: str):
         if session_id not in self.sessions:

@@ -172,7 +172,11 @@ st.markdown("""
 # Initialize RAG system
 @st.cache_resource
 def initialize_rag():
-    return Phase4RAG()
+    """Initialize RAG system with warmup for optimal first query performance."""
+    with st.spinner("🚀 Loading AI models and initializing chatbot..."):
+        rag = Phase4RAG()
+        rag.warmup()  # Pre-load all expensive components
+    return rag
 
 # Initialize session state
 if "messages" not in st.session_state:

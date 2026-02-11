@@ -2,7 +2,7 @@ import os
 from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
-from langchain_classic.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 
 # Load env
@@ -14,7 +14,16 @@ class RouteResponse(BaseModel):
     scheme: Optional[str] = Field(description="The HDFC fund scheme slug (hdfc_large_cap, hdfc_flexi_cap, hdfc_elss) or None")
     reasoning: str = Field(description="Brief reasoning for this classification")
 
+# Router cache for performance optimization
+_ROUTER_CACHE = None
+
 def get_router():
+    """Get cached router instance to avoid re-creating the LLM chain."""
+    global _ROUTER_CACHE
+    
+    if _ROUTER_CACHE is not None:
+        return _ROUTER_CACHE
+    
     llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
     
     # Using structured output capability of Llama 3 via LangChain
@@ -41,7 +50,8 @@ def get_router():
         ("human", "{query}"),
     ])
     
-    return prompt | structured_llm
+    _ROUTER_CACHE = prompt | structured_llm
+    return _ROUTER_CACHE
 
 if __name__ == "__main__":
     router = get_router()
