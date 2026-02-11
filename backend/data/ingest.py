@@ -10,7 +10,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
 
 # Configuration
 # Path relative to project root
-DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../Document Sources"))
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../Document Sources"))
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../vector_db"))
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
@@ -86,6 +86,8 @@ def ingest_docs():
         embedding=embeddings, 
         persist_directory=DB_DIR
     )
+    # Ensure persistence across restarts (Streamlit deploys).
+    vectorstore.persist()
     print(f"Successfully ingested documents into {DB_DIR}")
 
 if __name__ == "__main__":

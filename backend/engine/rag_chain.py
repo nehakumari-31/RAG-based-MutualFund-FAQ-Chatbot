@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
@@ -18,6 +19,41 @@ load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../vector_db"))
 
 from langchain_classic.memory import ConversationBufferMemory
+
+_VECTOR_DB_LOCK = threading.Lock()
+_VECTOR_DB_READY = False
+
+
+def _is_vector_db_ready() -> bool:
+    if not os.path.isdir(DB_DIR):
+        return False
+    try:
+        with os.scandir(DB_DIR) as it:
+            return any(True for _ in it)
+    except FileNotFoundError:
+        return False
+
+
+def ensure_vector_db() -> None:
+    """Ensure persisted Chroma DB exists; build it from PDFs if missing.
+
+    Streamlit deploys won't have `vector_db/` because it's gitignored, so we
+    build it on-demand from `Document Sources/` on the first query.
+    """
+    global _VECTOR_DB_READY
+    if _VECTOR_DB_READY and _is_vector_db_ready():
+        return
+
+    with _VECTOR_DB_LOCK:
+        if _is_vector_db_ready():
+            _VECTOR_DB_READY = True
+            return
+
+        # Build the vector DB from local PDFs.
+        from backend.data.ingest import ingest_docs
+
+        ingest_docs()
+        _VECTOR_DB_READY = _is_vector_db_ready()
 
 # Official HDFC Scheme Page Mapping
 HDFC_SOURCE_LINKS = {
@@ -61,6 +97,7 @@ Current Question: {question}
 Answer:"""
 
 def get_rag_chain(scheme_filter=None, memory=None):
+    ensure_vector_db()
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
     llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
@@ -68,7 +105,7 @@ def get_rag_chain(scheme_filter=None, memory=None):
     qa_prompt = PromptTemplate(template=QA_PROMPT_TEMPLATE, input_variables=["context", "question"])
     condense_prompt = PromptTemplate(template=CONDENSE_QUESTION_PROMPT, input_variables=["chat_history", "question"])
 
-    search_kwargs = {"k": 5}
+    search_kwargs = {"k": 10}
     if scheme_filter:
         search_kwargs["filter"] = {"scheme": scheme_filter}
 
