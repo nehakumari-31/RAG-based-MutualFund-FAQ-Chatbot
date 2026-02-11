@@ -5,8 +5,9 @@ import time
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
-from langchain.chains import ConversationalRetrievalChain
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 
 # Add current dir to path for local imports
@@ -18,8 +19,6 @@ load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"
 
 # Configuration
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../vector_db"))
-
-from langchain.memory import ConversationBufferMemory
 
 _VECTOR_DB_LOCK = threading.Lock()
 _VECTOR_DB_READY = False
@@ -86,13 +85,6 @@ HDFC_SOURCE_LINKS = {
     "sip_education": "https://www.hdfcfund.com/learn/blog/how-does-sip-work"
 }
 
-CONDENSE_QUESTION_PROMPT = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question.
-
-Chat History:
-{chat_history}
-Follow Up Input: {question}
-Standalone question:"""
-
 QA_PROMPT_TEMPLATE = """Information from Official HDFC Scheme Documents (SID/KIM/Notices):
 --------------------------------------
 {context}
@@ -102,6 +94,9 @@ Additional Official Process Knowledge:
 - Capital Gains Statement: To download, visit the HDFC Mutual Fund 'Request Statement' page, scroll to 'Capital Gains Statement', click 'Click here' to log in (using PAN/Folio), and navigate to Reports > Capital Gains Statement. Alternatively, use the CAMS portal for a consolidated version.
 - Account Statement: Can be requested via SMS (CAMS H SOA <Folio> <Password> to 56767) or via the portal's 'Request Statement' section.
 - KYC Status: Can be checked on KRA websites (CVL, NDML, etc.) using PAN.
+
+Chat History:
+{chat_history}
 
 Instructions for the Assistant:
 1. You are a professional Groww Mutual Fund Assistant.
@@ -117,34 +112,30 @@ Instructions for the Assistant:
 Current Question: {question}
 Answer:"""
 
-def get_rag_chain(scheme_filter=None, memory=None):
+def get_rag_chain(scheme_filter=None):
+    """Create a RAG chain using modern langchain API (no deprecated chains)."""
     ensure_vector_db()
     embeddings = get_embeddings()  # Use cached embeddings
     vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
     llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
     
-    qa_prompt = PromptTemplate(template=QA_PROMPT_TEMPLATE, input_variables=["context", "question"])
-    condense_prompt = PromptTemplate(template=CONDENSE_QUESTION_PROMPT, input_variables=["chat_history", "question"])
-
     search_kwargs = {"k": 10}
     if scheme_filter:
         search_kwargs["filter"] = {"scheme": scheme_filter}
-
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vectorstore.as_retriever(search_kwargs=search_kwargs),
-        memory=memory,
-        combine_docs_chain_kwargs={"prompt": qa_prompt},
-        condense_question_prompt=condense_prompt,
-        return_source_documents=True
-    )
-    return chain
+    
+    retriever = vectorstore.as_retriever(search_kwargs=search_kwargs)
+    
+    # Create a simple chain using LCEL (LangChain Expression Language)
+    def format_docs(docs):
+        return "\n\n".join([doc.page_content for doc in docs])
+    
+    return retriever, llm, format_docs
 
 class Phase4RAG:
     """Orchestrator for Phase 4 RAG with Memory, Routing, and Session tracking."""
     def __init__(self):
         self.router = get_router()
-        self.sessions = {} # session_id -> {memory, last_scheme}
+        self.sessions = {} # session_id -> {chat_history, last_scheme}
     
     def warmup(self):
         """Pre-load all expensive components to optimize first query performance."""
@@ -177,7 +168,7 @@ class Phase4RAG:
     def get_session_state(self, session_id: str):
         if session_id not in self.sessions:
             self.sessions[session_id] = {
-                "memory": ConversationBufferMemory(memory_key="chat_history", input_key="question", output_key="answer", return_messages=True),
+                "chat_history": [],
                 "last_scheme": "general"
             }
         return self.sessions[session_id]
@@ -189,11 +180,6 @@ class Phase4RAG:
         route_res = self.router.invoke({"query": user_query})
         
         # 2. Logic for Scheme Detection & Inheritance
-        # - If route is general: Use 'general', don't inherit.
-        # - If route is scheme_specific: 
-        #   - If scheme is found: Use found scheme.
-        #   - If scheme is NOT found (follow-up): Inherit from state.
-        
         if route_res.classification == "general":
             scheme_slug = "general"
         else: # scheme_specific
@@ -223,18 +209,39 @@ class Phase4RAG:
                 "url": HDFC_SOURCE_LINKS["sip_education"]
             })
 
-        # 4. Get chain with memory
-        # If it's general, we don't apply a metadata filter so it can search all docs (KYC, Statements, etc.)
-        chain = get_rag_chain(
-            scheme_filter=scheme_slug if scheme_slug != "general" else None,
-            memory=state["memory"]
+        # 4. Get RAG chain components
+        retriever, llm, format_docs = get_rag_chain(
+            scheme_filter=scheme_slug if scheme_slug != "general" else None
         )
-
-        response = chain.invoke({"question": user_query})
+        
+        # 5. Retrieve relevant documents
+        docs = retriever.get_relevant_documents(user_query)
+        context = format_docs(docs)
+        
+        # 6. Format chat history
+        chat_history_str = "\n".join([
+            f"Human: {msg['question']}\nAssistant: {msg['answer']}" 
+            for msg in state["chat_history"][-3:]  # Last 3 exchanges
+        ]) if state["chat_history"] else "No previous conversation."
+        
+        # 7. Generate answer using LLM
+        prompt = QA_PROMPT_TEMPLATE.format(
+            context=context,
+            chat_history=chat_history_str,
+            question=user_query
+        )
+        
+        answer = llm.invoke(prompt).content
+        
+        # 8. Update chat history
+        state["chat_history"].append({
+            "question": user_query,
+            "answer": answer
+        })
         
         return {
-            "answer": response["answer"],
-            "sources": list(set([doc.metadata.get("source") for doc in response.get("source_documents", [])])),
+            "answer": answer,
+            "sources": list(set([doc.metadata.get("source", "Unknown") for doc in docs])),
             "official_links": official_links,
             "routing": {
                 "classification": route_res.classification,
