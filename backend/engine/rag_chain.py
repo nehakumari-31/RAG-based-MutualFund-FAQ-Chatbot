@@ -215,7 +215,7 @@ class Phase4RAG:
         )
         
         # 5. Retrieve relevant documents
-        docs = retriever.get_relevant_documents(user_query)
+        docs = retriever.invoke(user_query)
         context = format_docs(docs)
         
         # 6. Format chat history
