@@ -245,7 +245,9 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
-                response = rag.query(user_input, st.session_state.session_id)
+                # Use user-provided API key if available
+                api_key = st.session_state.get("user_api_key")
+                response = rag.query(user_input, st.session_state.session_id, api_key=api_key)
                 
                 # Display answer
                 st.markdown(response["answer"])
@@ -272,8 +274,20 @@ if user_input:
                     "content": error_msg
                 })
 
-# Sidebar with info
+# Sidebar with info and settings
 with st.sidebar:
+    st.markdown("### ⚙️ Settings")
+    user_api_key = st.text_input(
+        "Groq API Key", 
+        type="password", 
+        placeholder="gsk_...",
+        help="Enter your Groq API Key to fulfill the 'one user one key' requirement."
+    )
+    if user_api_key:
+        st.session_state.user_api_key = user_api_key
+    
+    st.divider()
+    
     st.markdown("### ℹ️ About")
     st.markdown("""
     This chatbot answers questions about:

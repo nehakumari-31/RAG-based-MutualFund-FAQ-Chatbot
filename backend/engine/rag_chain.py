@@ -8,6 +8,7 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from typing import Optional, List, Dict
 from dotenv import load_dotenv
 
 # Add current dir to path for local imports
@@ -112,22 +113,57 @@ Instructions for the Assistant:
 Current Question: {question}
 Answer:"""
 
-def get_rag_chain(scheme_filter=None):
-    """Create a RAG chain using modern langchain API (no deprecated chains)."""
-    ensure_vector_db()
-    embeddings = get_embeddings()  # Use cached embeddings
-    vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
-    llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
+# LLM and VectorStore cache
+_LLM_CACHE = {} # key -> instance
+_VECTORSTORE_CACHE = None
+
+def get_llm(api_key: Optional[str] = None):
+    """Get or create LLM instance with optional API key override."""
+    global _LLM_CACHE
     
-    search_kwargs = {"k": 10}
+    # Use provided key or fallback to env
+    effective_key = api_key or os.getenv("GROQ_API_KEY")
+    
+    if effective_key in _LLM_CACHE:
+        return _LLM_CACHE[effective_key]
+    
+    llm = ChatGroq(
+        model_name="llama-3.3-70b-versatile", 
+        temperature=0,
+        groq_api_key=effective_key
+    )
+    _LLM_CACHE[effective_key] = llm
+    return llm
+
+def get_rag_chain(scheme_filter=None, api_key: Optional[str] = None):
+    """Create a RAG chain using modern langchain API (no deprecated chains)."""
+    global _VECTORSTORE_CACHE
+    ensure_vector_db()
+    embeddings = get_embeddings()
+    
+    if _VECTORSTORE_CACHE is None:
+        _VECTORSTORE_CACHE = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
+    
+    llm = get_llm(api_key)
+    
+    # Increase k to ensure we catch the live data chunk even if ranked slightly lower
+    search_kwargs = {"k": 20}
     if scheme_filter:
         search_kwargs["filter"] = {"scheme": scheme_filter}
     
-    retriever = vectorstore.as_retriever(search_kwargs=search_kwargs)
+    retriever = _VECTORSTORE_CACHE.as_retriever(search_kwargs=search_kwargs)
     
     # Create a simple chain using LCEL (LangChain Expression Language)
     def format_docs(docs):
-        return "\n\n".join([doc.page_content for doc in docs])
+        # PRIORITY 1: is_live chunks
+        # PRIORITY 2: chunks with currency symbols or numbers
+        def sort_key(d):
+            is_live = d.metadata.get("is_live", False)
+            has_numbers = any(c.isdigit() for c in d.page_content) and "₹" in d.page_content
+            return (is_live, has_numbers)
+            
+        sorted_docs = sorted(docs, key=sort_key, reverse=True)
+        return "\n\n".join([doc.page_content for doc in sorted_docs])
     
     return retriever, llm, format_docs
 
@@ -135,7 +171,7 @@ class Phase4RAG:
     """Orchestrator for Phase 4 RAG with Memory, Routing, and Session tracking."""
     def __init__(self):
         self.router = get_router()
-        self.sessions = {} # session_id -> {chat_history, last_scheme}
+        self.sessions = {} # session_id -> {chat_history, last_scheme, api_key}
     
     def warmup(self):
         """Pre-load all expensive components to optimize first query performance."""
@@ -169,14 +205,21 @@ class Phase4RAG:
         if session_id not in self.sessions:
             self.sessions[session_id] = {
                 "chat_history": [],
-                "last_scheme": "general"
+                "last_scheme": "general",
+                "api_key": None
             }
         return self.sessions[session_id]
 
-    def query(self, user_query: str, session_id: str = "default"):
+    def query(self, user_query: str, session_id: str = "default", api_key: Optional[str] = None):
         state = self.get_session_state(session_id)
         
-        # 1. Route the query
+        # Update session API key if provided
+        if api_key:
+            state["api_key"] = api_key
+            
+        # 1. Route the query (using shared LLM logic if possible, but router uses its own for now)
+        # To minimize API calls, if it's a short follow up, we could guess... 
+        # but let's stick to reliable routing for now.
         route_res = self.router.invoke({"query": user_query})
         
         # 2. Logic for Scheme Detection & Inheritance
@@ -211,7 +254,8 @@ class Phase4RAG:
 
         # 4. Get RAG chain components
         retriever, llm, format_docs = get_rag_chain(
-            scheme_filter=scheme_slug if scheme_slug != "general" else None
+            scheme_filter=scheme_slug if scheme_slug != "general" else None,
+            api_key=state["api_key"]
         )
         
         # 5. Retrieve relevant documents
@@ -231,7 +275,10 @@ class Phase4RAG:
             question=user_query
         )
         
-        answer = llm.invoke(prompt).content
+        # Update system instructions for numerical priority
+        instruction_tweak = "\nPRIORITY: If the context contains 'Live Data' (indicated by 'is_live: True' or currency symbols), you MUST prioritize the numerical values (NAV, AUM) from those sections."
+        
+        answer = llm.invoke(prompt + instruction_tweak).content
         
         # 8. Update chat history
         state["chat_history"].append({
@@ -241,7 +288,7 @@ class Phase4RAG:
         
         return {
             "answer": answer,
-            "sources": list(set([doc.metadata.get("source", "Unknown") for doc in docs])),
+            "sources": list(set([doc.metadata.get("description", "Unknown Source") for doc in docs])),
             "official_links": official_links,
             "routing": {
                 "classification": route_res.classification,

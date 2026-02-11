@@ -9,6 +9,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+import shutil
 from dotenv import load_dotenv
 
 # Load env from phase1 root
@@ -82,7 +83,8 @@ def clean_text(text):
         if not line:
             continue
         # Skip lines that look like pure UI noise (very short navigation items etc)
-        if len(line.split()) < 2 and len(line) < 5:
+        # RELAXED: NAV/AUM labels are short, so let's be less aggressive
+        if len(line) < 2:
             continue
         clean_lines.append(line)
         
@@ -111,6 +113,11 @@ def load_sources_from_csv():
 
 def ingest_docs():
     """Main ingestion function that downloads and processes documents from URLs."""
+    # 1. Deduplication: Clear existing vector database
+    if os.path.exists(DB_DIR):
+        print(f"🧹 Clearing existing vector database at {DB_DIR}...")
+        shutil.rmtree(DB_DIR, ignore_errors=True)
+        
     all_documents = []
     
     # Load sources from CSV
@@ -125,77 +132,86 @@ def ingest_docs():
     print(f"{'='*60}\n")
     
     # Process each source
-    for idx, source in enumerate(sources, 1):
-        url = source['url']
-        scheme = source['scheme']
-        doc_type = source['document_type']
-        description = source['description']
+    from playwright.sync_api import sync_playwright
+    
+    with sync_playwright() as p:
+        # Launch browser once for all web URLs
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
         
-        print(f"[{idx}/{len(sources)}] Processing: {description}")
-        print(f"  URL: {url}")
-        print(f"  Scheme: {scheme} | Type: {doc_type}")
-        
-        try:
-            # Check if URL is a PDF or web page
-            if url.endswith('.pdf') or 'pdf' in url.lower():
-                # Download PDF
-                filepath = download_pdf(url, DOWNLOAD_DIR)
-                
-                if filepath:
-                    # Load PDF
-                    loader = PyPDFLoader(filepath)
-                    docs = loader.load()
-                    
-                    # Add metadata and clean text
-                    for doc in docs:
-                        doc.page_content = clean_text(doc.page_content)
-                        doc.metadata["scheme"] = scheme
-                        doc.metadata["document_type"] = doc_type
-                        doc.metadata["source_url"] = url
-                        doc.metadata["description"] = description
-                    
-                    all_documents.extend(docs)
-                    print(f"  ✓ Loaded {len(docs)} pages from PDF\n")
+        for idx, source in enumerate(sources, 1):
+            url = source.get('url', '')
+            doc_type = source.get('document_type', 'General')
+            scheme = source.get('scheme', 'general')
+            description = source.get('description', 'Unknown Source')
             
-            else:
-                # Load web page content using direct Playwright for dynamic data (NAV, AUM, etc.)
-                print(f"  ⬇ Loading dynamic web page content...")
+            print(f"[{idx}/{len(sources)}] Processing: {description}")
+            print(f"  URL: {url}")
+            print(f"  Scheme: {scheme} | Type: {doc_type}")
+            
+            try:
+                # Check if URL is a PDF or web page
+                if url.endswith('.pdf') or 'pdf' in url.lower():
+                    # Download PDF
+                    filepath = download_pdf(url, DOWNLOAD_DIR)
+                    if filepath:
+                        # Load PDF
+                        loader = PyPDFLoader(filepath)
+                        docs = loader.load()
+                        for doc in docs:
+                            doc.page_content = clean_text(doc.page_content)
+                            doc.metadata.update({
+                                "scheme": scheme,
+                                "document_type": doc_type,
+                                "source": url,
+                                "description": description,
+                                "is_live": False
+                            })
+                        all_documents.extend(docs)
+                        print(f"  ✓ Loaded {len(docs)} pages from PDF\n")
                 
-                from playwright.sync_api import sync_playwright
-                
-                with sync_playwright() as p:
-                    # Launch browser
-                    browser = p.chromium.launch(headless=True)
-                    page = browser.new_page()
-                    
+                else:
+                    # Process Dynamic Web Page (Live)
+                    print(f"  ⬇ Loading dynamic web page content...")
                     try:
-                        # Navigate with generous timeout
                         page.goto(url, wait_until="networkidle", timeout=60000)
-                        # Extra wait for dynamic charts/numbers
-                        time.sleep(5)
+                        time.sleep(7) 
                         
-                        # Extract clean text from the body
-                        text_content = page.evaluate("document.body.innerText")
-                        clean_content = clean_text(text_content)
+                        raw_content = page.evaluate("document.body.innerText")
+                        clean_content = clean_text(raw_content)
                         
-                        docs = [Document(page_content=clean_content, metadata={
+                        print(f"  ✓ Captured dynamic content from {url} ({len(clean_content)} chars)")
+                        if len(clean_content) > 0:
+                            print(f"    Sample: {clean_content[:150]}...")
+                        
+                        # Verification
+                        if "₹" in clean_content or "NAV" in clean_content:
+                            print(f"    ➡️ Found potential NAV data!")
+                            nav_idx = clean_content.find("NAV")
+                            if nav_idx != -1:
+                                print(f"    NAV Snippet: ...{clean_content[max(0, nav_idx-50):nav_idx+100]}...")
+                        else:
+                            print(f"    ⚠️ Warning: No 'NAV' or '₹' found in captured content.")
+                        
+                        doc = Document(page_content=clean_content, metadata={
+                            "source": url,
                             "scheme": scheme,
                             "document_type": doc_type,
-                            "source_url": url,
-                            "description": description
-                        })]
-                        
-                        all_documents.extend(docs)
-                        print(f"  ✓ Captured dynamic content from {url} ({len(clean_content)} chars)\n")
-                        
+                            "description": description,
+                            "is_live": True
+                        })
+                        all_documents.extend([doc])
+                        print("")
                     except Exception as e:
                         print(f"  ✗ Failed to scrape {url}: {e}\n")
-                    finally:
-                        browser.close()
+            except Exception as e:
+                print(f"  ✗ Failed to process: {e}\n")
+                continue
         
-        except Exception as e:
-            print(f"  ✗ Failed to process: {e}\n")
-            continue
+        browser.close()
     
     if not all_documents:
         print("No documents were successfully loaded.")
