@@ -1,12 +1,14 @@
 import os
 import csv
 import requests
+import time
 from pathlib import Path
 from urllib.parse import urlparse, unquote
-from langchain_community.document_loaders import PyPDFLoader, WebBaseLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+from langchain_core.documents import Document
 from dotenv import load_dotenv
 
 # Load env from phase1 root
@@ -58,13 +60,33 @@ def download_pdf(url, download_dir):
         return None
 
 def clean_text(text):
-    """Basic cleaning for PDF extracted text."""
+    """
+    Clean extracted text while preserving semantic structure.
+    Removes excessive noise but keeps numbers and labels intact.
+    """
     import re
-    # Replace multiple newlines with a single newline
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    # Replace multiple spaces with a single space
+    
+    # 1. Basic normalization
+    text = text.replace('\xa0', ' ') # Remove non-breaking spaces
+    
+    # 2. Remove purely decorative characters but keep currency symbols
+    text = re.sub(r'[^\x00-\x7F₹]+', ' ', text)
+    
+    # 3. Collapse multiple spaces
     text = re.sub(r' {2,}', ' ', text)
-    return text.strip()
+    
+    # 4. Handle lines and segments
+    lines = [line.strip() for line in text.split('\n')]
+    clean_lines = []
+    for line in lines:
+        if not line:
+            continue
+        # Skip lines that look like pure UI noise (very short navigation items etc)
+        if len(line.split()) < 2 and len(line) < 5:
+            continue
+        clean_lines.append(line)
+        
+    return '\n'.join(clean_lines)
 
 def load_sources_from_csv():
     """Load document sources from sources.csv."""
@@ -136,21 +158,40 @@ def ingest_docs():
                     print(f"  ✓ Loaded {len(docs)} pages from PDF\n")
             
             else:
-                # Load web page content
-                print(f"  ⬇ Loading web page content...")
-                loader = WebBaseLoader(url)
-                docs = loader.load()
+                # Load web page content using direct Playwright for dynamic data (NAV, AUM, etc.)
+                print(f"  ⬇ Loading dynamic web page content...")
                 
-                # Add metadata and clean text
-                for doc in docs:
-                    doc.page_content = clean_text(doc.page_content)
-                    doc.metadata["scheme"] = scheme
-                    doc.metadata["document_type"] = doc_type
-                    doc.metadata["source_url"] = url
-                    doc.metadata["description"] = description
+                from playwright.sync_api import sync_playwright
                 
-                all_documents.extend(docs)
-                print(f"  ✓ Loaded web page content\n")
+                with sync_playwright() as p:
+                    # Launch browser
+                    browser = p.chromium.launch(headless=True)
+                    page = browser.new_page()
+                    
+                    try:
+                        # Navigate with generous timeout
+                        page.goto(url, wait_until="networkidle", timeout=60000)
+                        # Extra wait for dynamic charts/numbers
+                        time.sleep(5)
+                        
+                        # Extract clean text from the body
+                        text_content = page.evaluate("document.body.innerText")
+                        clean_content = clean_text(text_content)
+                        
+                        docs = [Document(page_content=clean_content, metadata={
+                            "scheme": scheme,
+                            "document_type": doc_type,
+                            "source_url": url,
+                            "description": description
+                        })]
+                        
+                        all_documents.extend(docs)
+                        print(f"  ✓ Captured dynamic content from {url} ({len(clean_content)} chars)\n")
+                        
+                    except Exception as e:
+                        print(f"  ✗ Failed to scrape {url}: {e}\n")
+                    finally:
+                        browser.close()
         
         except Exception as e:
             print(f"  ✗ Failed to process: {e}\n")

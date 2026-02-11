@@ -16,3 +16,7 @@ streamlit>=1.28.0
 sentence-transformers
 pydantic>=2.0.0
 requests
+playwright
+beautifulsoup4
+html2text
+unstructured
