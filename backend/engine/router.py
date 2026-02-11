@@ -2,7 +2,7 @@ import os
 from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 
 # Load env

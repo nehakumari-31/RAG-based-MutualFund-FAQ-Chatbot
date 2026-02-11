@@ -5,8 +5,8 @@ import time
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
-from langchain.chains import ConversationalRetrievalChain
-from langchain.prompts import PromptTemplate
+from langchain_community.chains import ConversationalRetrievalChain
+from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
 
 # Add current dir to path for local imports
@@ -19,6 +19,7 @@ load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"
 # Configuration
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../vector_db"))
 
+from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.memory import ConversationBufferMemory
 
 _VECTOR_DB_LOCK = threading.Lock()
