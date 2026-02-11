@@ -2,7 +2,7 @@ import os
 import sys
 import json
 from langchain_groq import ChatGroq
-from langchain.prompts import PromptTemplate
+from langchain_classic.prompts import PromptTemplate
 from dotenv import load_dotenv
 
 # Add src to path
