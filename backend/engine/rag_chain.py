@@ -56,19 +56,30 @@ def _is_vector_db_ready() -> bool:
 
 
 def ensure_vector_db() -> bool:
-    """Check if persisted Chroma DB exists.
+    """Ensure persisted Chroma DB exists; build it if missing.
     
     Returns True if the database is ready, False otherwise.
-    Manual ingestion is required via the UI if this returns False.
+    Will attempt automatic ingestion if the database is missing.
     """
     global _VECTOR_DB_READY
     if _VECTOR_DB_READY and _is_vector_db_ready():
         return True
 
     with _VECTOR_DB_LOCK:
-        ready = _is_vector_db_ready()
-        _VECTOR_DB_READY = ready
-        return ready
+        if _is_vector_db_ready():
+            _VECTOR_DB_READY = True
+            return True
+
+        # Attempt automatic build if missing
+        try:
+            print("🏗️ Vector database missing. Attempting automatic ingestion...")
+            from backend.data.ingest import ingest_docs
+            ingest_docs()
+            _VECTOR_DB_READY = _is_vector_db_ready()
+            return _VECTOR_DB_READY
+        except Exception as e:
+            print(f"❌ Automatic ingestion failed: {e}")
+            return False
 
 # Official HDFC Scheme Page Mapping
 HDFC_SOURCE_LINKS = {
