@@ -202,6 +202,15 @@ class Phase4RAG:
         """Check if all components are ready for queries."""
         return ensure_vector_db()
 
+    def get_session_state(self, session_id: str):
+        if session_id not in self.sessions:
+            self.sessions[session_id] = {
+                "chat_history": [],
+                "last_scheme": "general",
+                "api_key": None
+            }
+        return self.sessions[session_id]
+
     def query(self, user_query: str, session_id: str = "default", api_key: Optional[str] = None):
         state = self.get_session_state(session_id)
         
