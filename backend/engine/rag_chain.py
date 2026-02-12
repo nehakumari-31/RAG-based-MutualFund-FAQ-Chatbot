@@ -55,26 +55,20 @@ def _is_vector_db_ready() -> bool:
         return False
 
 
-def ensure_vector_db() -> None:
-    """Ensure persisted Chroma DB exists; build it from PDFs if missing.
-
-    Streamlit deploys won't have `vector_db/` because it's gitignored, so we
-    build it on-demand from `Document Sources/` on the first query.
+def ensure_vector_db() -> bool:
+    """Check if persisted Chroma DB exists.
+    
+    Returns True if the database is ready, False otherwise.
+    Manual ingestion is required via the UI if this returns False.
     """
     global _VECTOR_DB_READY
     if _VECTOR_DB_READY and _is_vector_db_ready():
-        return
+        return True
 
     with _VECTOR_DB_LOCK:
-        if _is_vector_db_ready():
-            _VECTOR_DB_READY = True
-            return
-
-        # Build the vector DB from local PDFs.
-        from backend.data.ingest import ingest_docs
-
-        ingest_docs()
-        _VECTOR_DB_READY = _is_vector_db_ready()
+        ready = _is_vector_db_ready()
+        _VECTOR_DB_READY = ready
+        return ready
 
 # Official HDFC Scheme Page Mapping
 HDFC_SOURCE_LINKS = {
@@ -137,8 +131,9 @@ def get_llm(api_key: Optional[str] = None):
 
 def get_rag_chain(scheme_filter=None, api_key: Optional[str] = None):
     """Create a RAG chain using modern langchain API (no deprecated chains)."""
-    global _VECTORSTORE_CACHE
-    ensure_vector_db()
+    if not ensure_vector_db():
+        raise FileNotFoundError("Vector database not found. Please run ingestion first.")
+        
     embeddings = get_embeddings()
     
     if _VECTORSTORE_CACHE is None:
@@ -181,34 +176,31 @@ class Phase4RAG:
         # 1. Pre-load embeddings model
         get_embeddings()
         
-        # 2. Ensure vector database is ready
+        # 2. Check vector database readiness
         print("🔄 Checking vector database...")
         start_db = time.time()
-        ensure_vector_db()
-        elapsed_db = time.time() - start_db
-        print(f"✓ Vector database ready in {elapsed_db:.2f}s")
-        
-        # 3. Pre-warm router with a test query
-        print("🔄 Initializing query router...")
-        start_router = time.time()
-        try:
-            self.router.invoke({"query": "What is the expense ratio?"})
-        except Exception:
-            pass  # Ignore errors, just warming up the LLM
-        elapsed_router = time.time() - start_router
-        print(f"✓ Router initialized in {elapsed_router:.2f}s")
+        if ensure_vector_db():
+            elapsed_db = time.time() - start_db
+            print(f"✓ Vector database ready in {elapsed_db:.2f}s")
+            
+            # 3. Pre-warm router with a test query (only if DB is ready)
+            print("🔄 Initializing query router...")
+            start_router = time.time()
+            try:
+                self.router.invoke({"query": "What is the expense ratio?"})
+            except Exception:
+                pass  # Ignore errors, just warming up the LLM
+            elapsed_router = time.time() - start_router
+            print(f"✓ Router initialized in {elapsed_router:.2f}s")
+        else:
+            print("⚠️ Vector database is missing. Skipping DB-dependent warmup.")
         
         elapsed_total = time.time() - start_total
-        print(f"✅ Warmup complete in {elapsed_total:.2f}s - Ready for queries!\n")
+        print(f"✅ Warmup complete in {elapsed_total:.2f}s\n")
 
-    def get_session_state(self, session_id: str):
-        if session_id not in self.sessions:
-            self.sessions[session_id] = {
-                "chat_history": [],
-                "last_scheme": "general",
-                "api_key": None
-            }
-        return self.sessions[session_id]
+    def is_ready(self) -> bool:
+        """Check if all components are ready for queries."""
+        return ensure_vector_db()
 
     def query(self, user_query: str, session_id: str = "default", api_key: Optional[str] = None):
         state = self.get_session_state(session_id)

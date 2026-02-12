@@ -300,6 +300,32 @@ with st.sidebar:
     **Session ID:** `{}`
     """.format(st.session_state.session_id[:8] + "..."))
     
+    # Database Management section
+    st.divider()
+    st.markdown("### 🛠️ Database Management")
+    
+    db_ready = rag.is_ready()
+    if db_ready:
+        st.success("✅ Database is ready")
+    else:
+        st.warning("⚠️ Database missing or incomplete")
+        
+    if st.button("🏗️ Rebuild Database", help="Triggers the ingestion process. This may take a few minutes and requires an internet connection."):
+        with st.status("🏗️ Rebuilding database...", expanded=True) as status:
+            st.write("🧹 Clearing old data...")
+            st.write("⬇️ Starting ingestion (including web scraping)...")
+            try:
+                from backend.data.ingest import ingest_docs
+                ingest_docs()
+                st.session_state.rag_initialized = False # Force re-init if needed
+                status.update(label="✅ Database rebuilt successfully!", state="complete", expanded=False)
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Ingestion failed: {str(e)}")
+                status.update(label="❌ Ingestion failed", state="error")
+
+    st.divider()
+    
     if st.button("🔄 Clear Chat"):
         st.session_state.messages = []
         st.rerun()

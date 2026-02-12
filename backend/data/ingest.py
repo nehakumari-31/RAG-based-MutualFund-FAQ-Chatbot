@@ -1,4 +1,5 @@
 import os
+import sys
 import csv
 import requests
 import time
@@ -133,10 +134,37 @@ def ingest_docs():
     
     # Process each source
     from playwright.sync_api import sync_playwright
+    import subprocess
     
+    def ensure_playwright_browsers():
+        """Ensure Playwright browsers are installed."""
+        print("🔍 Checking Playwright browser installation...")
+        try:
+            # Simple check by trying to launch in a dummy context if possible, 
+            # but usually it's better to just try and run the install command
+            # if we get the specific error.
+            pass 
+        except Exception:
+            pass
+
     with sync_playwright() as p:
-        # Launch browser once for all web URLs
-        browser = p.chromium.launch(headless=True)
+        # 1.5. Ensure browser is available
+        try:
+            browser = p.chromium.launch(headless=True)
+        except Exception as e:
+            if "playwright install" in str(e).lower() or "executable doesn't exist" in str(e).lower():
+                print("⚠️ Playwright browser missing. Attempting to install chromium...")
+                try:
+                    subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+                    browser = p.chromium.launch(headless=True)
+                except Exception as install_err:
+                    print(f"❌ Failed to auto-install Playwright browser: {install_err}")
+                    print("Please run 'playwright install chromium' manually on your server.")
+                    return
+            else:
+                print(f"❌ Failed to launch browser: {e}")
+                return
+
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
         )
