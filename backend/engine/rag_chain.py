@@ -142,6 +142,7 @@ def get_llm(api_key: Optional[str] = None):
 
 def get_rag_chain(scheme_filter=None, api_key: Optional[str] = None):
     """Create a RAG chain using modern langchain API (no deprecated chains)."""
+    global _VECTORSTORE_CACHE
     if not ensure_vector_db():
         raise FileNotFoundError("Vector database not found. Please run ingestion first.")
         
