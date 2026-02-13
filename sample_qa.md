@@ -4,7 +4,7 @@ Sample Q&A file
 The expense ratio for the HDFC ELSS Tax saver - Regular Plan is 1.75% p.a. and for the Direct Plan is 1.15% p.a. The maximum Total Expense Ratio under Regulation 52 (6) varies from 2.25% to 1.05% based on the daily net assets. Last updated from sources: HDFC ELSS Tax saver - KIM, SEBI Mutual Funds Regulations.
 https://www.hdfcfund.com/explore/mutual-funds/hdfc-elss-tax-saver/direct
 
-2.Exit load of large cap mutual fund?
+2. Exit load of large cap mutual fund?
 The exit load for the HDFC Large Cap Fund is 1.00% if units are redeemed or switched out within 1 year from the date of allotment. No exit load is payable if units are redeemed or switched out after 1 year from the date of allotment. Last updated from sources: HDFC Large Cap Fund-SID, HDFC Top 100 Fund - KIM.	
 https://www.hdfcfund.com/explore/mutual-funds/hdfc-large-cap-fund/direct
 
@@ -27,6 +27,7 @@ https://www.hdfcfund.com/explore/mutual-funds/hdfc-elss-tax-saver/direct
 8. Should I buy large cap?
 The HDFC Large Cap Fund is an open-ended equity scheme that predominantly invests in large cap stocks, aiming to provide long-term capital appreciation. The fund has a minimum exposure of 80% to large cap stocks and may also invest up to 20% in debt and money market securities. The Scheme Riskometer is indicated as suitable for investors seeking to generate long-term capital appreciation/income, with investments predominantly in Large-Cap companies. Last updated from sources: HDFC Large Cap Fund-SID, HDFC Top 100 Fund - KIM
 https://www.hdfcfund.com/explore/mutual-funds/hdfc-large-cap-fund/direct
+
 
 
 
