@@ -177,7 +177,6 @@ def get_rag_chain(scheme_filter=None, api_key: Optional[str] = None):
 class Phase4RAG:
     """Orchestrator for Phase 4 RAG with Memory, Routing, and Session tracking."""
     def __init__(self):
-        self.router = get_router()
         self.sessions = {} # session_id -> {chat_history, last_scheme, api_key}
     
     def warmup(self):
@@ -195,17 +194,8 @@ class Phase4RAG:
             elapsed_db = time.time() - start_db
             print(f"✓ Vector database ready in {elapsed_db:.2f}s")
             
-            # 3. Pre-warm router with a test query (only if DB is ready)
-            print("🔄 Initializing query router...")
-            start_router = time.time()
-            try:
-                self.router.invoke({"query": "What is the expense ratio?"})
-            except Exception:
-                pass  # Ignore errors, just warming up the LLM
-            elapsed_router = time.time() - start_router
-            print(f"✓ Router initialized in {elapsed_router:.2f}s")
-        else:
-            print("⚠️ Vector database is missing. Skipping DB-dependent warmup.")
+        # 3. Component initialization complete
+        print("✓ Engine components ready (Heuristic routing enabled)")
         
         elapsed_total = time.time() - start_total
         print(f"✅ Warmup complete in {elapsed_total:.2f}s\n")
@@ -223,6 +213,34 @@ class Phase4RAG:
             }
         return self.sessions[session_id]
 
+    def heuristic_router(self, query: str):
+        """Locally classify query without an API call to save costs/limits."""
+        q = query.lower()
+        
+        # 1. Scheme Detection
+        scheme = None
+        if any(w in q for w in ["large cap", "large-cap", "top 100", "bluechip"]):
+            scheme = "hdfc_large_cap"
+        elif any(w in q for w in ["flexi cap", "flexicap"]):
+            scheme = "hdfc_flexi_cap"
+        elif any(w in q for w in ["elss", "tax saver", "tax saving", "taxsaver"]):
+            scheme = "hdfc_elss"
+            
+        # 2. Classification
+        # If it mentioned a scheme OR specific fund metrics, it's scheme_specific
+        metrics = ["nav", "aum", "expense ratio", "exit load", "lock in", "performance", "objective"]
+        if scheme or any(m in q for m in metrics):
+            classification = "scheme_specific"
+        else:
+            classification = "general"
+            
+        class RouteRes:
+            def __init__(self, classification, scheme):
+                self.classification = classification
+                self.scheme = scheme
+                
+        return RouteRes(classification, scheme)
+
     def query(self, user_query: str, session_id: str = "default", api_key: Optional[str] = None):
         state = self.get_session_state(session_id)
         
@@ -230,20 +248,18 @@ class Phase4RAG:
         if api_key:
             state["api_key"] = api_key
             
-        # 1. Route the query (using shared LLM logic if possible, but router uses its own for now)
-        # To minimize API calls, if it's a short follow up, we could guess... 
-        # but let's stick to reliable routing for now.
-        route_res = self.router.invoke({"query": user_query})
+        # 1. Route the query (HEURISTIC - 0 API Calls)
+        route_res = self.heuristic_router(user_query)
         
         # 2. Logic for Scheme Detection & Inheritance
         if route_res.classification == "general":
             scheme_slug = "general"
         else: # scheme_specific
             candidate = route_res.scheme
-            # Robust check for valid scheme from router
-            if candidate and str(candidate).lower() not in ["none", "null", "undefined"]:
+            if candidate:
                 scheme_slug = candidate
             else:
+                # Inherit last fund for follow-ups (e.g. "What is its NAV?")
                 scheme_slug = state["last_scheme"]
         
         # Only update last_scheme if we actually identified a specific fund
